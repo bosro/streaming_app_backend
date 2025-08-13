@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 export class StorageService {
   private s3Client: S3Client;
   private bucket: string;
-  private cloudFrontDomain?: string;
+  private cloudFrontDomain?: string | undefined;
 
   constructor() {
     this.s3Client = new S3Client({
@@ -17,8 +17,7 @@ export class StorageService {
       },
     });
     this.bucket = process.env.AWS_S3_BUCKET!;
-    this.cloudFrontDomain = process.env.AWS_CLOUDFRONT_DOMAIN;
-  }
+    this.cloudFrontDomain = process.env.AWS_CLOUDFRONT_DOMAIN as string | undefined;  }
 
   public async generateSignedUrl(fileKey: string, expiresIn: number = 3600): Promise<string> {
     // If using CloudFront, generate CloudFront signed URL
@@ -36,10 +35,14 @@ export class StorageService {
   }
 
   private generateCloudFrontSignedUrl(fileKey: string, expiresIn: number): string {
-    // In production, implement CloudFront signed URL generation
-    // For now, return the CloudFront URL without signing
-    return `${this.cloudFrontDomain}/${fileKey}`;
+    if (this.cloudFrontDomain) {
+      return `${this.cloudFrontDomain}/${fileKey}`;
+    }
+    // Fallback to S3 URL if CloudFront domain is not configured
+    return `https://${this.bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
   }
+  
+ 
 
   public async uploadFile(
     file: Buffer | Uint8Array | string,

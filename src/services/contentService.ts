@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { ContentCategory, PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -39,11 +39,14 @@ export class ContentService {
     progress: number,
     duration?: number
   ) {
+    // Convert undefined to null for duration
+    const durationValue = duration !== undefined ? duration : null;
+  
     return await prisma.contentView.upsert({
       where: { userId_contentId: { userId, contentId } },
       update: {
         progress,
-        duration,
+        duration: durationValue, // Use null instead of undefined
         completed: progress >= 90,
         updatedAt: new Date(),
       },
@@ -51,7 +54,7 @@ export class ContentService {
         userId,
         contentId,
         progress,
-        duration,
+        duration: durationValue, // Use null instead of undefined
         completed: progress >= 90,
       },
     });
@@ -76,7 +79,12 @@ export class ContentService {
     }
 
     // Extract user preferences
-    const categoryCount: Record<string, number> = {};
+    const categoryCount: Record<ContentCategory, number> = {
+      VIDEOS: 0,
+      SHORTS: 0,
+      MINDGASM: 0,
+      AUDIOBOOKS: 0
+    }; // Use ContentCategory as key type
     const tagCount: Record<string, number> = {};
 
     userViews.forEach(view => {
@@ -86,13 +94,13 @@ export class ContentService {
       });
     });
 
-    const preferredCategories = Object.keys(categoryCount).sort(
-      (a, b) => categoryCount[b] - categoryCount[a]
-    );
+    const preferredCategories: ContentCategory[] = Object.keys(categoryCount)
+      .sort((a, b) => categoryCount[b as ContentCategory] - categoryCount[a as ContentCategory])
+      .map(category => category as ContentCategory); // Ensure type is ContentCategory[]
 
-    const preferredTags = Object.keys(tagCount).sort(
-      (a, b) => tagCount[b] - tagCount[a]
-    ).slice(0, 5);
+    const preferredTags = Object.keys(tagCount)
+      .sort((a, b) => tagCount[b] - tagCount[a])
+      .slice(0, 5);
 
     // Get viewed content IDs to exclude
     const viewedContentIds = userViews.map(view => view.contentId);
@@ -103,7 +111,7 @@ export class ContentService {
         isPublished: true,
         id: { notIn: viewedContentIds },
         OR: [
-          { category: { in: preferredCategories } },
+          { category: { in: preferredCategories } }, // Now type-safe
           { tags: { hasSome: preferredTags } },
         ],
       },

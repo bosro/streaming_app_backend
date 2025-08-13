@@ -14,9 +14,9 @@ export const validate = (validations: ValidationChain[]) => {
     }
 
     const extractedErrors = errors.array().map(err => ({
-      field: err.param,
+      field: 'param' in err ? err.param : undefined, 
       message: err.msg,
-      value: err.value,
+      value: 'value' in err ? err.value : undefined,
     }));
 
     res.status(400).json({

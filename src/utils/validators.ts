@@ -214,13 +214,13 @@ export const sanitizeHtml = (html: string): string => {
 
 // Custom error class for validation
 export class ValidationError extends Error {
-  public field?: string;
-  public code?: string;
+  public field?: string | undefined; 
+  public code?: string | undefined;
 
   constructor(message: string, field?: string, code?: string) {
     super(message);
     this.name = 'ValidationError';
-    this.field = field;
+    this.field = field; 
     this.code = code;
   }
 }
