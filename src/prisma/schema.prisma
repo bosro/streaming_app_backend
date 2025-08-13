@@ -1,0 +1,353 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  name              String?
+  avatar            String?
+  role              UserRole  @default(USER)
+  subscriptionTier  SubscriptionTier @default(FREE) @map("subscription_tier")
+  isEmailVerified   Boolean   @default(false) @map("is_email_verified")
+  emailVerificationToken String? @map("email_verification_token")
+  passwordResetToken String? @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
+  lastLoginAt       DateTime? @map("last_login_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  subscriptions     Subscription[]
+  downloads         Download[]
+  orders            Order[]
+  messages          Message[]
+  contentViews      ContentView[]
+  notifications     UserNotification[]
+  pushTokens        PushToken[]
+
+  @@map("users")
+}
+
+model Content {
+  id              String      @id @default(cuid())
+  title           String
+  description     String?
+  category        ContentCategory
+  type            ContentType
+  fileUrl         String?     @map("file_url")
+  hlsUrl          String?     @map("hls_url")
+  thumbnailUrl    String?     @map("thumbnail_url")
+  duration        Int?        // in seconds
+  fileSize        BigInt?     @map("file_size")
+  isPremium       Boolean     @default(false) @map("is_premium")
+  isAdultContent  Boolean     @default(false) @map("is_adult_content")
+  isPublished     Boolean     @default(true) @map("is_published")
+  tags            String[]
+  metadata        Json?
+  viewCount       Int         @default(0) @map("view_count")
+  downloadCount   Int         @default(0) @map("download_count")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  downloads       Download[]
+  contentViews    ContentView[]
+
+  @@map("content")
+}
+
+model Download {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  contentId   String    @map("content_id")
+  expiresAt   DateTime  @map("expires_at")
+  downloadedAt DateTime @default(now()) @map("downloaded_at")
+  fileSize    BigInt?   @map("file_size")
+  isExpired   Boolean   @default(false) @map("is_expired")
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content     Content   @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentId])
+  @@map("downloads")
+}
+
+model ContentView {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  contentId   String    @map("content_id")
+  progress    Float     @default(0) // percentage watched
+  duration    Int?      // total watch time in seconds
+  completed   Boolean   @default(false)
+  viewedAt    DateTime  @default(now()) @map("viewed_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content     Content   @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentId])
+  @@map("content_views")
+}
+
+model Product {
+  id                    String    @id @default(cuid())
+  name                  String
+  description           String
+  price                 Decimal   @db.Decimal(10, 2)
+  currency              String    @default("USD")
+  category              String
+  images                String[]
+  inStock               Boolean   @default(true) @map("in_stock")
+  stockQuantity         Int       @default(0) @map("stock_quantity")
+  isDigital             Boolean   @default(false) @map("is_digital")
+  digitalFileUrl        String?   @map("digital_file_url")
+  weight                Float?    // for shipping calculations
+  dimensions            Json?     // {length, width, height}
+  customizationOptions  Json?     @map("customization_options")
+  isActive              Boolean   @default(true) @map("is_active")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  orders                OrderItem[]
+
+  @@map("products")
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  userId          String        @map("user_id")
+  orderNumber     String        @unique @map("order_number")
+  status          OrderStatus   @default(PENDING)
+  totalAmount     Decimal       @db.Decimal(10, 2) @map("total_amount")
+  currency        String        @default("USD")
+  paymentIntentId String?       @map("payment_intent_id")
+  shippingAddress Json?         @map("shipping_address")
+  billingAddress  Json?         @map("billing_address")
+  shippingCost    Decimal?      @db.Decimal(10, 2) @map("shipping_cost")
+  taxAmount       Decimal?      @db.Decimal(10, 2) @map("tax_amount")
+  discountAmount  Decimal?      @db.Decimal(10, 2) @map("discount_amount")
+  couponCode      String?       @map("coupon_code")
+  notes           String?
+  trackingNumber  String?       @map("tracking_number")
+  fulfilledAt     DateTime?     @map("fulfilled_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  user            User          @relation(fields: [userId], references: [id])
+  items           OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id              String    @id @default(cuid())
+  orderId         String    @map("order_id")
+  productId       String    @map("product_id")
+  quantity        Int
+  unitPrice       Decimal   @db.Decimal(10, 2) @map("unit_price")
+  totalPrice      Decimal   @db.Decimal(10, 2) @map("total_price")
+  customizations  Json?     // product customizations
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  order           Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product         Product   @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model Subscription {
+  id                    String              @id @default(cuid())
+  userId                String              @map("user_id")
+  planId                String              @map("plan_id")
+  status                SubscriptionStatus  @default(ACTIVE)
+  tier                  SubscriptionTier    @default(STANDARD)
+  platform              PaymentPlatform     @default(STRIPE)
+  externalSubscriptionId String?            @map("external_subscription_id")
+  receipt               Json?               // store receipt data
+  currentPeriodStart    DateTime            @map("current_period_start")
+  currentPeriodEnd      DateTime            @map("current_period_end")
+  cancelAtPeriodEnd     Boolean             @default(false) @map("cancel_at_period_end")
+  canceledAt            DateTime?           @map("canceled_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model Message {
+  id          String        @id @default(cuid())
+  userId      String        @map("user_id")
+  subject     String
+  message     String
+  type        MessageType   @default(SUPPORT)
+  status      MessageStatus @default(SENT)
+  reply       String?
+  repliedAt   DateTime?     @map("replied_at")
+  repliedBy   String?       @map("replied_by")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model Notification {
+  id          String      @id @default(cuid())
+  title       String
+  body        String
+  type        NotificationType @default(GENERAL)
+  data        Json?       // additional data for the notification
+  imageUrl    String?     @map("image_url")
+  targetUsers String[]    @map("target_users") // user IDs or "all"
+  sentCount   Int         @default(0) @map("sent_count")
+  sentAt      DateTime?   @map("sent_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  userNotifications UserNotification[]
+
+  @@map("notifications")
+}
+
+model UserNotification {
+  id             String       @id @default(cuid())
+  userId         String       @map("user_id")
+  notificationId String       @map("notification_id")
+  isRead         Boolean      @default(false) @map("is_read")
+  readAt         DateTime?    @map("read_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  // Relations
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, notificationId])
+  @@map("user_notifications")
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  platform  String   // ios, android, web
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("push_tokens")
+}
+
+model AdminSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String   @map("updated_by")
+
+  @@map("admin_settings")
+}
+
+model Analytics {
+  id        String      @id @default(cuid())
+  event     String
+  userId    String?     @map("user_id")
+  data      Json?
+  ip        String?
+  userAgent String?     @map("user_agent")
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@map("analytics")
+}
+
+// Enums
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum SubscriptionTier {
+  FREE
+  STANDARD
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+  EXPIRED
+  PAST_DUE
+}
+
+enum PaymentPlatform {
+  STRIPE
+  GOOGLE_PLAY
+  APPLE_STORE
+}
+
+enum ContentCategory {
+  VIDEOS
+  SHORTS
+  MINDGASM
+  AUDIOBOOKS
+}
+
+enum ContentType {
+  VIDEO
+  AUDIO
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum MessageType {
+  SUPPORT
+  FEEDBACK
+  BUG_REPORT
+  GENERAL
+}
+
+enum MessageStatus {
+  SENT
+  RECEIVED
+  REPLIED
+}
+
+enum NotificationType {
+  GENERAL
+  NEW_CONTENT
+  SUBSCRIPTION
+  ORDER_UPDATE
+  SYSTEM
+}
