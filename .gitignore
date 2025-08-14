@@ -33,6 +33,7 @@ pids/
 # Dependency directories
 node_modules/
 jspm_packages/
+service-account-key.json
 
 # Optional npm cache directory
 .npm
