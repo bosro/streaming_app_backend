@@ -14,7 +14,7 @@ const validationService = new ValidationService();
 
 const createSubscriptionSchema = z.object({
   planId: z.string().min(1, 'Plan ID is required'),
-  paymentMethodId: z.string().min(1, 'Payment method ID is required'), // Remove .optional()
+  paymentMethodId: z.string().min(1, 'Payment method ID is required'),
 });
 
 const validateReceiptSchema = z.object({
@@ -33,7 +33,7 @@ export class SubscriptionController {
    *       200:
    *         description: Subscription plans retrieved successfully
    */
-  public async getPlans(req: Request, res: Response, next: NextFunction): Promise<void> {
+  public async getPlans(_req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const plans = await subscriptionService.getAvailablePlans();
 
@@ -84,13 +84,13 @@ export class SubscriptionController {
       // Check if subscription is expired
       const now = new Date();
       const isExpired = subscription.currentPeriodEnd < now;
-      
+
       if (isExpired && subscription.status === 'ACTIVE') {
         await prisma.subscription.update({
           where: { id: subscription.id },
           data: { status: 'EXPIRED' },
         });
-        
+
         await prisma.user.update({
           where: { id: userId },
           data: { subscriptionTier: 'FREE' },
@@ -129,6 +129,7 @@ export class SubscriptionController {
    *             type: object
    *             required:
    *               - planId
+   *               - paymentMethodId
    *             properties:
    *               planId:
    *                 type: string
@@ -144,7 +145,7 @@ export class SubscriptionController {
     try {
       const { planId, paymentMethodId } = createSubscriptionSchema.parse(req.body);
       const userId = req.user!.userId;
-  
+
       // Check if user already has an active subscription
       const existingSubscription = await prisma.subscription.findFirst({
         where: {
@@ -152,7 +153,7 @@ export class SubscriptionController {
           status: { in: ['ACTIVE', 'PAST_DUE'] },
         },
       });
-  
+
       if (existingSubscription) {
         res.status(400).json({
           success: false,
@@ -160,13 +161,13 @@ export class SubscriptionController {
         } as ApiResponse);
         return;
       }
-  
+
       // Get user details
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { id: true, email: true, name: true },
       });
-  
+
       if (!user) {
         res.status(404).json({
           success: false,
@@ -174,7 +175,7 @@ export class SubscriptionController {
         } as ApiResponse);
         return;
       }
-  
+
       // Create Stripe subscription
       const stripeSubscription = await paymentService.createSubscription({
         customerId: user.id,
@@ -183,10 +184,10 @@ export class SubscriptionController {
         customerEmail: user.email,
         customerName: user.name || '',
       });
-  
+
       // Determine subscription tier based on plan
       const tier: SubscriptionTier = planId.includes('premium') ? 'PREMIUM' : 'STANDARD';
-  
+
       // Create subscription record
       const subscription = await prisma.subscription.create({
         data: {
@@ -200,13 +201,13 @@ export class SubscriptionController {
           currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
         },
       });
-  
+
       // Update user's subscription tier
       await prisma.user.update({
         where: { id: userId },
         data: { subscriptionTier: tier },
       });
-  
+
       // Track analytics
       await prisma.analytics.create({
         data: {
@@ -220,19 +221,21 @@ export class SubscriptionController {
           },
         },
       });
-  
+
       logger.info(`Subscription created for user ${userId}: ${subscription.id}`);
-  
+
       res.status(201).json({
         success: true,
         message: 'Subscription created successfully',
         data: {
           subscription,
-          clientSecret: stripeSubscription.latest_invoice && typeof stripeSubscription.latest_invoice !== 'string' 
-          ? (typeof stripeSubscription.latest_invoice.payment_intent !== 'string' 
-              ? stripeSubscription.latest_invoice.payment_intent?.client_secret || null 
-              : null)
-          : null,        },
+          clientSecret:
+            stripeSubscription.latest_invoice && typeof stripeSubscription.latest_invoice !== 'string'
+              ? typeof stripeSubscription.latest_invoice.payment_intent !== 'string'
+                ? stripeSubscription.latest_invoice.payment_intent?.client_secret || null
+                : null
+              : null,
+        },
       } as ApiResponse);
     } catch (error) {
       next(error);
@@ -291,7 +294,7 @@ export class SubscriptionController {
         data: {
           event: 'subscription_cancelled',
           userId,
-          data: { 
+          data: {
             subscriptionId: subscription.id,
             tier: subscription.tier,
             platform: subscription.platform,
@@ -344,9 +347,9 @@ export class SubscriptionController {
     try {
       const { receipt, platform } = validateReceiptSchema.parse(req.body);
       const userId = req.user!.userId;
-  
+
       let validationResult;
-  
+
       if (platform === 'GOOGLE_PLAY') {
         validationResult = await validationService.validateGooglePlayReceipt(receipt);
       } else if (platform === 'APPLE_STORE') {
@@ -358,7 +361,7 @@ export class SubscriptionController {
         } as ApiResponse);
         return;
       }
-  
+
       if (!validationResult.isValid) {
         res.status(400).json({
           success: false,
@@ -367,10 +370,10 @@ export class SubscriptionController {
         } as ApiResponse);
         return;
       }
-  
+
       // Determine subscription tier based on product ID
       const tier: SubscriptionTier = validationResult.productId?.includes('premium') ? 'PREMIUM' : 'STANDARD';
-  
+
       // Create or update subscription
       const subscription = await prisma.subscription.upsert({
         where: {
@@ -396,13 +399,13 @@ export class SubscriptionController {
           receipt: validationResult.receiptData,
         },
       });
-  
+
       // Update user's subscription tier
       await prisma.user.update({
         where: { id: userId },
         data: { subscriptionTier: tier },
       });
-  
+
       // Track analytics
       await prisma.analytics.create({
         data: {
@@ -416,9 +419,9 @@ export class SubscriptionController {
           },
         },
       });
-  
+
       logger.info(`Mobile subscription validated for user ${userId}: ${subscription.id}`);
-  
+
       res.status(200).json({
         success: true,
         message: 'Receipt validated successfully',

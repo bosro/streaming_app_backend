@@ -1,5 +1,6 @@
 import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { getSignedUrl as getCloudFrontSignedUrl } from '@aws-sdk/cloudfront-signer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -17,7 +18,8 @@ export class StorageService {
       },
     });
     this.bucket = process.env.AWS_S3_BUCKET!;
-    this.cloudFrontDomain = process.env.AWS_CLOUDFRONT_DOMAIN as string | undefined;  }
+    this.cloudFrontDomain = process.env.AWS_CLOUDFRONT_DOMAIN as string | undefined;
+  }
 
   public async generateSignedUrl(fileKey: string, expiresIn: number = 3600): Promise<string> {
     // If using CloudFront, generate CloudFront signed URL
@@ -35,14 +37,18 @@ export class StorageService {
   }
 
   private generateCloudFrontSignedUrl(fileKey: string, expiresIn: number): string {
-    if (this.cloudFrontDomain) {
-      return `${this.cloudFrontDomain}/${fileKey}`;
-    }
-    // Fallback to S3 URL if CloudFront domain is not configured
-    return `https://${this.bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
+    const privateKey = process.env.AWS_CLOUDFRONT_PRIVATE_KEY!;
+    const keyPairId = process.env.AWS_CLOUDFRONT_KEY_PAIR_ID!;
+    const url = `https://${this.cloudFrontDomain}/${fileKey}`;
+    const dateLessThan = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+    return getCloudFrontSignedUrl({
+      url,
+      keyPairId,
+      privateKey,
+      dateLessThan,
+    });
   }
-  
- 
 
   public async uploadFile(
     file: Buffer | Uint8Array | string,

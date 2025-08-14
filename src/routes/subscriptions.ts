@@ -68,10 +68,15 @@ router.get('/', authenticate, subscriptionController.getCurrentSubscription);
  *       400:
  *         description: Invalid plan or payment method
  */
-router.post('/create', authenticate, validate([
-  body('planId').isString().notEmpty().withMessage('Plan ID is required'),
-  body('paymentMethodId').optional().isString(),
-]), subscriptionController.createSubscription);
+router.post(
+  '/create',
+  authenticate,
+  validate([
+    body('planId').isString().notEmpty().withMessage('Plan ID is required'),
+    body('paymentMethodId').optional().isString(),
+  ]),
+  subscriptionController.createSubscription
+);
 
 /**
  * @swagger
@@ -118,10 +123,15 @@ router.post('/cancel', authenticate, subscriptionController.cancelSubscription);
  *       400:
  *         description: Invalid receipt
  */
-router.post('/validate-receipt', authenticate, validate([
-  body('receipt').isString().notEmpty().withMessage('Receipt data is required'),
-  body('platform').isIn(['GOOGLE_PLAY', 'APPLE_STORE']).withMessage('Invalid platform'),
-]), subscriptionController.validateReceipt);
+router.post(
+  '/validate-receipt',
+  authenticate,
+  validate([
+    body('receipt').isString().notEmpty().withMessage('Receipt data is required'),
+    body('platform').isIn(['GOOGLE_PLAY', 'APPLE_STORE']).withMessage('Invalid platform'),
+  ]),
+  subscriptionController.validateReceipt
+);
 
 /**
  * @swagger

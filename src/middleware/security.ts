@@ -97,7 +97,7 @@ export const preventBruteForce = async (req: Request, res: Response, next: NextF
 
 // Middleware to log sensitive operations
 export const auditLog = (operation: string): RequestHandler => {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return (req: Request, _res: Response, next: NextFunction): void => {
     logger.info(`Audit: ${operation}`, {
       ip: req.ip,
       userAgent: req.get('User-Agent'),
