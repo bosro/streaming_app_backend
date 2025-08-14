@@ -24,7 +24,7 @@ export class EmailService {
     });
   }
 
-  private async sendEmail(options: EmailOptions): Promise<void> {
+  public async sendEmail(options: EmailOptions): Promise<void> {
     try {
       const mailOptions = {
         from: process.env.EMAIL_FROM || process.env.EMAIL_USER!,

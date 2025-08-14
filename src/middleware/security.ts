@@ -1,5 +1,13 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
+import Redis from 'ioredis';
 import { logger } from '../utils/logger';
+
+// Initialize Redis client (update with your Redis connection details)
+const redis = new Redis({
+  host: 'localhost', // Replace with your Redis host
+  port: 6379,       // Replace with your Redis port
+  // password: 'your-redis-password', // Uncomment if Redis requires authentication
+});
 
 export const securityMiddleware = (req: Request, res: Response, next: NextFunction): void => {
   // Remove X-Powered-By header
@@ -53,22 +61,54 @@ export const securityMiddleware = (req: Request, res: Response, next: NextFuncti
 };
 
 // Middleware to prevent brute force attacks
-export const preventBruteForce = (req: Request, res: Response, next: NextFunction): void => {
-  // This would typically use Redis to track failed attempts
-  // For now, we'll just log the attempt
-  logger.info(`Login attempt from ${req.ip} for ${req.body.email}`);
-  next();
+export const preventBruteForce = async (req: Request, res: Response, next: NextFunction): Promise<void | Response> => {
+  const ip = req.ip; // Get client IP
+  const email = req.body.email || 'unknown'; // Get email or fallback to 'unknown'
+  const key = `brute-force:${ip}:${email}`; // Unique key for IP + email combination
+  const maxAttempts = 5; // Maximum allowed attempts
+  const windowInSeconds = 5 * 60; // 5 minutes window
+
+  try {
+    // Increment attempt count in Redis
+    const attempts = await redis.incr(key);
+
+    // Set expiration for the key if it's the first attempt
+    if (attempts === 1) {
+      await redis.expire(key, windowInSeconds);
+    }
+
+    // Check if attempts exceed the limit
+    if (attempts > maxAttempts) {
+      logger.warn(`Brute force attempt blocked from ${ip} for ${email}`);
+      return res.status(429).json({
+        success: false,
+        message: 'Too many login attempts, please try again later',
+      });
+    }
+
+    logger.info(`Login attempt from ${ip} for ${email} (${attempts}/${maxAttempts})`);
+    next();
+  } catch (error) {
+    logger.error('Redis error in preventBruteForce:', error);
+    // Optionally, allow the request to proceed if Redis fails (fail-open behavior)
+    next();
+  }
 };
 
 // Middleware to log sensitive operations
-export const auditLog = (operation: string) => {
+export const auditLog = (operation: string): RequestHandler => {
   return (req: Request, res: Response, next: NextFunction): void => {
     logger.info(`Audit: ${operation}`, {
       ip: req.ip,
       userAgent: req.get('User-Agent'),
-      userId: (req as any).user?.userId,
+      userId: (req as any).user?.userId || 'anonymous',
       timestamp: new Date().toISOString(),
     });
     next();
   };
 };
+
+// Handle Redis errors
+redis.on('error', (error) => {
+  logger.error('Redis connection error:', error);
+});

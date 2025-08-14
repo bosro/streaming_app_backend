@@ -7,7 +7,6 @@ import { AuthService } from '../services/authService';
 import { EmailService } from '../services/emailService';
 import { logger } from '../utils/logger';
 import { ApiResponse, AuthenticatedRequest } from '../types/common';
-import { LoginRequest, RegisterRequest, RefreshTokenRequest } from '../types/auth';
 
 const prisma = new PrismaClient();
 const authService = new AuthService();
@@ -71,12 +70,12 @@ export class AuthController {
     try {
       const validatedData = registerSchema.parse(req.body);
       const { email, password, name } = validatedData;
-
+  
       // Check if user already exists
       const existingUser = await prisma.user.findUnique({
         where: { email: email.toLowerCase() },
       });
-
+  
       if (existingUser) {
         res.status(400).json({
           success: false,
@@ -84,17 +83,20 @@ export class AuthController {
         } as ApiResponse);
         return;
       }
-
+  
       // Hash password
       const passwordHash = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS || '12'));
-
+  
+      // Generate verification token
+      const verificationToken = authService.generateVerificationToken();
+  
       // Create user
       const user = await prisma.user.create({
         data: {
           email: email.toLowerCase(),
           passwordHash,
           name,
-          emailVerificationToken: authService.generateVerificationToken(),
+          emailVerificationToken: verificationToken,
         },
         select: {
           id: true,
@@ -104,17 +106,18 @@ export class AuthController {
           subscriptionTier: true,
           isEmailVerified: true,
           createdAt: true,
+          emailVerificationToken: true,
         },
       });
-
+  
       // Send verification email
       await emailService.sendVerificationEmail(user.email, user.emailVerificationToken!);
-
+  
       // Generate tokens
       const tokens = await authService.generateTokens(user.id);
-
+  
       logger.info(`User registered: ${user.email}`);
-
+  
       res.status(201).json({
         success: true,
         message: 'User registered successfully. Please check your email for verification.',
@@ -233,7 +236,7 @@ export class AuthController {
    *       401:
    *         description: Invalid refresh token
    */
-  public async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+  public async refreshToken(req: Request, res: Response): Promise<void> {
     try {
       const { refreshToken } = req.body;
 

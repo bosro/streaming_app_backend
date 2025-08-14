@@ -7,17 +7,17 @@ const prisma = new PrismaClient();
 interface SendNotificationParams {
   title: string;
   body: string;
-  data?: Record<string, string>;
-  imageUrl?: string;
-  targetUsers?: string[]; // user IDs, or empty for all users
+  data?: Record<string, string> | undefined;
+  imageUrl?: string | undefined;
+  targetUsers?: string[] | undefined; // user IDs, or empty for all users
 }
 
 interface SendToUserParams {
   userId: string;
   title: string;
   body: string;
-  data?: Record<string, string>;
-  imageUrl?: string;
+  data?: Record<string, string> | undefined;
+  imageUrl?: string | undefined;
 }
 
 export class NotificationService {
@@ -29,59 +29,57 @@ export class NotificationService {
 
   public async sendNotification(params: SendNotificationParams): Promise<void> {
     const { title, body, data, imageUrl, targetUsers } = params;
-
+  
     try {
       // Create notification record
       const notification = await prisma.notification.create({
         data: {
           title,
           body,
-          data: data || {},
-          imageUrl,
-          targetUsers: targetUsers || ['all'],
+          data: data ?? {},
+          imageUrl: imageUrl ?? null,
+          targetUsers: targetUsers ?? ['all'],
           type: 'GENERAL',
         },
       });
-
+  
       let userIds: string[] = [];
-
+  
       if (!targetUsers || targetUsers.includes('all')) {
-        // Get all active users
         const users = await prisma.user.findMany({
-          where: { 
-            pushTokens: { 
-              some: { isActive: true } 
-            } 
+          where: {
+            pushTokens: {
+              some: { isActive: true },
+            },
           },
           select: { id: true },
         });
-        userIds = users.map(u => u.id);
+        userIds = users.map((u) => u.id);
       } else {
         userIds = targetUsers;
       }
-
-      // Get push tokens for target users
+  
       const pushTokens = await prisma.pushToken.findMany({
         where: {
           userId: { in: userIds },
           isActive: true,
         },
       });
-
+  
       if (pushTokens.length === 0) {
         logger.info('No active push tokens found for notification');
         return;
       }
-
-      // Prepare messages
-      const messages: admin.messaging.Message[] = pushTokens.map(token => ({
+  
+      // Prepare messages as TokenMessage[]
+      const messages: admin.messaging.TokenMessage[] = pushTokens.map((token) => ({
         token: token.token,
         notification: {
           title,
           body,
-          imageUrl,
+          ...(imageUrl ? { imageUrl } : {}),
         },
-        data: data || {},
+        data: data ?? {},
         android: {
           notification: {
             icon: 'ic_notification',
@@ -98,25 +96,24 @@ export class NotificationService {
           },
         },
       }));
-
+  
       // Send notifications in batches
       const batchSize = 500;
       let sentCount = 0;
-
+  
       for (let i = 0; i < messages.length; i += batchSize) {
         const batch = messages.slice(i, i + batchSize);
-        
+  
         try {
           const response = await this.messaging.sendAll(batch);
           sentCount += response.successCount;
-
+  
           // Handle failed tokens
           response.responses.forEach((resp, index) => {
             if (!resp.success) {
-              const token = batch[index].token!;
+              const token = batch[index].token; // No error, since batch[index] is TokenMessage
               logger.error(`Failed to send notification to token ${token}:`, resp.error);
-              
-              // Deactivate invalid tokens
+  
               if (resp.error?.code === 'messaging/registration-token-not-registered') {
                 this.deactivateToken(token);
               }
@@ -126,7 +123,7 @@ export class NotificationService {
           logger.error('Error sending notification batch:', error);
         }
       }
-
+  
       // Update notification sent count
       await prisma.notification.update({
         where: { id: notification.id },
@@ -135,18 +132,18 @@ export class NotificationService {
           sentAt: new Date(),
         },
       });
-
+  
       // Create user notification records
-      const userNotifications = userIds.map(userId => ({
+      const userNotifications = userIds.map((userId) => ({
         userId,
         notificationId: notification.id,
       }));
-
+  
       await prisma.userNotification.createMany({
         data: userNotifications,
         skipDuplicates: true,
       });
-
+  
       logger.info(`Notification sent to ${sentCount} devices: ${title}`);
     } catch (error) {
       logger.error('Error sending notification:', error);
@@ -169,16 +166,16 @@ export class NotificationService {
       return;
     }
 
-    const tokens = pushTokens.map(pt => pt.token);
+    const tokens = pushTokens.map((pt) => pt.token);
 
     const message: admin.messaging.MulticastMessage = {
       tokens,
       notification: {
         title,
         body,
-        imageUrl,
+        ...(imageUrl ? { imageUrl } : {}),
       },
-      data: data || {},
+      data: data ?? {},
       android: {
         notification: {
           icon: 'ic_notification',
@@ -198,7 +195,7 @@ export class NotificationService {
 
     try {
       const response = await this.messaging.sendMulticast(message);
-      
+
       // Handle failed tokens
       response.responses.forEach((resp, index) => {
         if (!resp.success && resp.error?.code === 'messaging/registration-token-not-registered') {
@@ -261,7 +258,7 @@ export class NotificationService {
     ]);
 
     return {
-      notifications: notifications.map(un => ({
+      notifications: notifications.map((un) => ({
         id: un.id,
         title: un.notification.title,
         body: un.notification.body,

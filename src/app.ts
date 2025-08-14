@@ -1,4 +1,4 @@
-import express, { Application, Request, Response, NextFunction } from 'express';
+import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -8,25 +8,25 @@ import swaggerJsdoc from 'swagger-jsdoc';
 import dotenv from 'dotenv';
 
 // Import middleware
-import { errorHandler } from './src/middleware/errorHandler';
-import { rateLimiter } from './src/middleware/rateLimiter';
-import { securityMiddleware } from './src/middleware/security';
+import { errorHandler } from './middleware/errorHandler';
+import { rateLimiter } from './middleware/rateLimiter';
+import { securityMiddleware } from './middleware/security';
 
 // Import routes
-import authRoutes from './src/routes/auth';
-import contentRoutes from './src/routes/content';
-import subscriptionRoutes from './src/routes/subscriptions';
-import productRoutes from './src/routes/products';
-import orderRoutes from './src/routes/orders';
-import notificationRoutes from './src/routes/notifications';
-import messageRoutes from './src/routes/messages';
-import adminRoutes from './src/routes/admin';
-import webhookRoutes from './src/routes/webhooks';
+import authRoutes from './routes/auth';
+import contentRoutes from './routes/content';
+import subscriptionRoutes from './routes/subscriptions';
+import productRoutes from './routes/products';
+import orderRoutes from './routes/orders';
+import notificationRoutes from './routes/notifications';
+import messageRoutes from './routes/messages';
+import adminRoutes from './routes/admin';
+import webhookRoutes from './routes/webhooks';
 
 // Import configs
-import { connectDatabase } from './src/config/database';
-import { initializeFirebase } from './src/config/firebase';
-import { logger } from './src/utils/logger';
+import { connectDatabase } from './config/database';
+import { initializeFirebase } from './config/firebase';
+import { logger } from './utils/logger';
 
 // Load environment variables
 dotenv.config();
@@ -99,6 +99,8 @@ class App {
 
     // Health check endpoint
     this.app.get('/health', (req: Request, res: Response) => {
+      const userAgent = req.get('User-Agent'); 
+      logger.info(`Health check requested from: ${userAgent}`);
       res.status(200).json({
         status: 'OK',
         timestamp: new Date().toISOString(),

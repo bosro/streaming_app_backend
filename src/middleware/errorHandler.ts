@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
 import { logger } from '../utils/logger';
@@ -12,8 +12,7 @@ interface CustomError extends Error {
 export const errorHandler = (
   error: CustomError,
   req: Request,
-  res: Response,
-  next: NextFunction
+  res: Response
 ): void => {
   logger.error('Error occurred:', {
     message: error.message,

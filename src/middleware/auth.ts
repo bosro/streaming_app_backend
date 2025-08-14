@@ -1,5 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import {  Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AuthService } from '../services/authService';
 import { ApiResponse, AuthenticatedRequest } from '../types/common';

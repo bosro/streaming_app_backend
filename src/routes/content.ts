@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { param, query } from 'express-validator';
+import { param } from 'express-validator';
 import { contentController } from '../controllers/contentController';
-import { authenticate, requireSubscription } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 import { streamingRateLimiter } from '../middleware/rateLimiter';
 import { validate, validatePagination } from '../middleware/validation';
 

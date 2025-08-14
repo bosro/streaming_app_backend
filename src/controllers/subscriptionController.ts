@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { PrismaClient, SubscriptionStatus, SubscriptionTier, PaymentPlatform } from '@prisma/client';
+import { PrismaClient, SubscriptionTier, PaymentPlatform } from '@prisma/client';
 import { SubscriptionService } from '../services/subscriptionService';
 import { PaymentService } from '../services/paymentService';
 import { ValidationService } from '../services/validationService';
@@ -14,7 +14,7 @@ const validationService = new ValidationService();
 
 const createSubscriptionSchema = z.object({
   planId: z.string().min(1, 'Plan ID is required'),
-  paymentMethodId: z.string().optional(),
+  paymentMethodId: z.string().min(1, 'Payment method ID is required'), // Remove .optional()
 });
 
 const validateReceiptSchema = z.object({
@@ -144,7 +144,7 @@ export class SubscriptionController {
     try {
       const { planId, paymentMethodId } = createSubscriptionSchema.parse(req.body);
       const userId = req.user!.userId;
-
+  
       // Check if user already has an active subscription
       const existingSubscription = await prisma.subscription.findFirst({
         where: {
@@ -152,7 +152,7 @@ export class SubscriptionController {
           status: { in: ['ACTIVE', 'PAST_DUE'] },
         },
       });
-
+  
       if (existingSubscription) {
         res.status(400).json({
           success: false,
@@ -160,13 +160,13 @@ export class SubscriptionController {
         } as ApiResponse);
         return;
       }
-
+  
       // Get user details
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { id: true, email: true, name: true },
       });
-
+  
       if (!user) {
         res.status(404).json({
           success: false,
@@ -174,7 +174,7 @@ export class SubscriptionController {
         } as ApiResponse);
         return;
       }
-
+  
       // Create Stripe subscription
       const stripeSubscription = await paymentService.createSubscription({
         customerId: user.id,
@@ -183,10 +183,10 @@ export class SubscriptionController {
         customerEmail: user.email,
         customerName: user.name || '',
       });
-
+  
       // Determine subscription tier based on plan
       const tier: SubscriptionTier = planId.includes('premium') ? 'PREMIUM' : 'STANDARD';
-
+  
       // Create subscription record
       const subscription = await prisma.subscription.create({
         data: {
@@ -200,19 +200,19 @@ export class SubscriptionController {
           currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
         },
       });
-
+  
       // Update user's subscription tier
       await prisma.user.update({
         where: { id: userId },
         data: { subscriptionTier: tier },
       });
-
+  
       // Track analytics
       await prisma.analytics.create({
         data: {
           event: 'subscription_created',
           userId,
-          data: { 
+          data: {
             subscriptionId: subscription.id,
             planId,
             tier,
@@ -220,16 +220,19 @@ export class SubscriptionController {
           },
         },
       });
-
+  
       logger.info(`Subscription created for user ${userId}: ${subscription.id}`);
-
+  
       res.status(201).json({
         success: true,
         message: 'Subscription created successfully',
-        data: { 
+        data: {
           subscription,
-          clientSecret: stripeSubscription.latest_invoice?.payment_intent?.client_secret,
-        },
+          clientSecret: stripeSubscription.latest_invoice && typeof stripeSubscription.latest_invoice !== 'string' 
+          ? (typeof stripeSubscription.latest_invoice.payment_intent !== 'string' 
+              ? stripeSubscription.latest_invoice.payment_intent?.client_secret || null 
+              : null)
+          : null,        },
       } as ApiResponse);
     } catch (error) {
       next(error);
@@ -341,9 +344,9 @@ export class SubscriptionController {
     try {
       const { receipt, platform } = validateReceiptSchema.parse(req.body);
       const userId = req.user!.userId;
-
+  
       let validationResult;
-      
+  
       if (platform === 'GOOGLE_PLAY') {
         validationResult = await validationService.validateGooglePlayReceipt(receipt);
       } else if (platform === 'APPLE_STORE') {
@@ -355,7 +358,7 @@ export class SubscriptionController {
         } as ApiResponse);
         return;
       }
-
+  
       if (!validationResult.isValid) {
         res.status(400).json({
           success: false,
@@ -364,14 +367,17 @@ export class SubscriptionController {
         } as ApiResponse);
         return;
       }
-
+  
       // Determine subscription tier based on product ID
       const tier: SubscriptionTier = validationResult.productId?.includes('premium') ? 'PREMIUM' : 'STANDARD';
-
+  
       // Create or update subscription
       const subscription = await prisma.subscription.upsert({
         where: {
-          externalSubscriptionId: validationResult.transactionId || `${platform}_${userId}_${Date.now()}`,
+          userId_externalSubscriptionId: {
+            userId,
+            externalSubscriptionId: validationResult.transactionId || `${platform}_${userId}_${Date.now()}`,
+          },
         },
         update: {
           status: 'ACTIVE',
@@ -390,19 +396,19 @@ export class SubscriptionController {
           receipt: validationResult.receiptData,
         },
       });
-
+  
       // Update user's subscription tier
       await prisma.user.update({
         where: { id: userId },
         data: { subscriptionTier: tier },
       });
-
+  
       // Track analytics
       await prisma.analytics.create({
         data: {
           event: 'mobile_subscription_validated',
           userId,
-          data: { 
+          data: {
             subscriptionId: subscription.id,
             platform,
             productId: validationResult.productId,
@@ -410,13 +416,13 @@ export class SubscriptionController {
           },
         },
       });
-
+  
       logger.info(`Mobile subscription validated for user ${userId}: ${subscription.id}`);
-
+  
       res.status(200).json({
         success: true,
         message: 'Receipt validated successfully',
-        data: { 
+        data: {
           subscription,
           validationResult: {
             productId: validationResult.productId,

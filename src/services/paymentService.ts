@@ -174,6 +174,9 @@ export class PaymentService {
       case 'past_due':
         status = 'PAST_DUE';
         break;
+      case 'incomplete_expired':
+        status = 'EXPIRED';
+        break;
       default:
         status = 'INACTIVE';
     }

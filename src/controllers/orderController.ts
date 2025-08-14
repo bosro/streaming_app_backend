@@ -1,83 +1,49 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { PrismaClient, OrderStatus } from '@prisma/client';
+import { PrismaClient, OrderStatus, Prisma } from '@prisma/client';
 import { PaymentService } from '../services/paymentService';
-import { EmailService } from '../services/emailService';
 import { logger } from '../utils/logger';
 import { ApiResponse, AuthenticatedRequest } from '../types/common';
 import { generateOrderNumber, calculateTax, calculateShipping } from '../utils/helpers';
 
 const prisma = new PrismaClient();
 const paymentService = new PaymentService();
-const emailService = new EmailService();
 
 const createOrderSchema = z.object({
-  items: z.array(z.object({
-    productId: z.string().cuid(),
-    quantity: z.number().min(1),
-    customizations: z.record(z.string()).optional(),
-  })).min(1),
-  shippingAddress: z.object({
-    fullName: z.string().min(1),
-    addressLine1: z.string().min(1),
-    addressLine2: z.string().optional(),
-    city: z.string().min(1),
-    state: z.string().min(1),
-    postalCode: z.string().min(1),
-    country: z.string().min(1),
-  }).optional(),
-  billingAddress: z.object({
-    fullName: z.string().min(1),
-    addressLine1: z.string().min(1),
-    addressLine2: z.string().optional(),
-    city: z.string().min(1),
-    state: z.string().min(1),
-    postalCode: z.string().min(1),
-    country: z.string().min(1),
-  }).optional(),
+  items: z.array(
+    z.object({
+      productId: z.string().cuid(),
+      quantity: z.number().min(1),
+      customizations: z.record(z.string()).optional(),
+    }),
+  ).min(1),
+  shippingAddress: z
+    .object({
+      fullName: z.string().min(1),
+      addressLine1: z.string().min(1),
+      addressLine2: z.string().optional(),
+      city: z.string().min(1),
+      state: z.string().min(1),
+      postalCode: z.string().min(1),
+      country: z.string().min(1),
+    })
+    .optional(),
+  billingAddress: z
+    .object({
+      fullName: z.string().min(1),
+      addressLine1: z.string().min(1),
+      addressLine2: z.string().optional(),
+      city: z.string().min(1),
+      state: z.string().min(1),
+      postalCode: z.string().min(1),
+      country: z.string().min(1),
+    })
+    .optional(),
   couponCode: z.string().optional(),
   notes: z.string().optional(),
 });
 
 export class OrderController {
-  /**
-   * @swagger
-   * /orders:
-   *   post:
-   *     summary: Create a new order
-   *     tags: [Orders]
-   *     security:
-   *       - bearerAuth: []
-   *     requestBody:
-   *       required: true
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *             required:
-   *               - items
-   *             properties:
-   *               items:
-   *                 type: array
-   *                 items:
-   *                   type: object
-   *                   properties:
-   *                     productId:
-   *                       type: string
-   *                     quantity:
-   *                       type: integer
-   *                     customizations:
-   *                       type: object
-   *               shippingAddress:
-   *                 type: object
-   *               couponCode:
-   *                 type: string
-   *     responses:
-   *       201:
-   *         description: Order created successfully
-   *       400:
-   *         description: Invalid order data
-   */
   public async createOrder(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const validatedData = createOrderSchema.parse(req.body);
@@ -85,7 +51,7 @@ export class OrderController {
       const userId = req.user!.userId;
 
       // Fetch products and validate availability
-      const productIds = items.map(item => item.productId);
+      const productIds = items.map((item) => item.productId);
       const products = await prisma.product.findMany({
         where: {
           id: { in: productIds },
@@ -104,7 +70,7 @@ export class OrderController {
       // Check stock availability
       const stockErrors: string[] = [];
       for (const item of items) {
-        const product = products.find(p => p.id === item.productId)!;
+        const product = products.find((p) => p.id === item.productId)!;
         if (!product.inStock || product.stockQuantity < item.quantity) {
           stockErrors.push(`${product.name}: Insufficient stock (available: ${product.stockQuantity})`);
         }
@@ -121,8 +87,8 @@ export class OrderController {
 
       // Calculate order totals
       let subtotal = 0;
-      const orderItems = items.map(item => {
-        const product = products.find(p => p.id === item.productId)!;
+      const orderItems = items.map((item) => {
+        const product = products.find((p) => p.id === item.productId)!;
         const unitPrice = Number(product.price);
         const totalPrice = unitPrice * item.quantity;
         subtotal += totalPrice;
@@ -139,7 +105,6 @@ export class OrderController {
       // Apply coupon discount (simplified)
       let discountAmount = 0;
       if (couponCode) {
-        // In production, validate coupon and calculate discount
         if (couponCode.toLowerCase() === 'save10') {
           discountAmount = subtotal * 0.1;
         }
@@ -157,11 +122,11 @@ export class OrderController {
         data: {
           userId,
           orderNumber,
-          status: 'PENDING',
+          status: 'PENDING' as OrderStatus, // Explicitly cast for type safety
           totalAmount,
           currency: 'USD',
-          shippingAddress: shippingAddress || null,
-          billingAddress: billingAddress || null,
+          shippingAddress: shippingAddress ?? Prisma.JsonNull, // Use Prisma.JsonNull for null JSON fields
+          billingAddress: billingAddress ?? Prisma.JsonNull, // Use Prisma.JsonNull for null JSON fields
           shippingCost,
           taxAmount,
           discountAmount: discountAmount > 0 ? discountAmount : null,
@@ -228,42 +193,21 @@ export class OrderController {
     }
   }
 
-  /**
-   * @swagger
-   * /orders:
-   *   get:
-   *     summary: Get user's orders
-   *     tags: [Orders]
-   *     security:
-   *       - bearerAuth: []
-   *     parameters:
-   *       - in: query
-   *         name: page
-   *         schema:
-   *           type: integer
-   *           minimum: 1
-   *           default: 1
-   *       - in: query
-   *         name: limit
-   *         schema:
-   *           type: integer
-   *           minimum: 1
-   *           maximum: 50
-   *           default: 20
-   *     responses:
-   *       200:
-   *         description: Orders retrieved successfully
-   */
   public async getUserOrders(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
+      const userId = req.user!.userId;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
-      const offset = (page - 1) * limit;
-      const userId = req.user!.userId;
+
+      const skip = (page - 1) * limit;
+      const take = Math.min(limit, 50); // Enforce max limit from Swagger spec
 
       const [orders, total] = await Promise.all([
         prisma.order.findMany({
           where: { userId },
+          skip,
+          take,
+          orderBy: { createdAt: 'desc' },
           include: {
             items: {
               include: {
@@ -271,16 +215,12 @@ export class OrderController {
                   select: {
                     id: true,
                     name: true,
-                    images: true,
-                    isDigital: true,
+                    price: true,
                   },
                 },
               },
             },
           },
-          orderBy: { createdAt: 'desc' },
-          skip: offset,
-          take: limit,
         }),
         prisma.order.count({ where: { userId } }),
       ]);
@@ -295,8 +235,6 @@ export class OrderController {
             limit,
             total,
             totalPages: Math.ceil(total / limit),
-            hasNext: page < Math.ceil(total / limit),
-            hasPrev: page > 1,
           },
         },
       } as ApiResponse);
@@ -305,40 +243,32 @@ export class OrderController {
     }
   }
 
-  /**
-   * @swagger
-   * /orders/{id}:
-   *   get:
-   *     summary: Get order details by ID
-   *     tags: [Orders]
-   *     security:
-   *       - bearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: id
-   *         required: true
-   *         schema:
-   *           type: string
-   *     responses:
-   *       200:
-   *         description: Order details retrieved successfully
-   *       404:
-   *         description: Order not found
-   */
   public async getOrderById(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { id } = req.params;
       const userId = req.user!.userId;
+      const orderId = req.params.id;
 
       const order = await prisma.order.findFirst({
         where: {
-          id,
-          userId,
+          id: orderId,
+          userId, // Ensure the order belongs to the authenticated user
         },
         include: {
           items: {
             include: {
-              product: true,
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  price: true,
+                },
+              },
+            },
+          },
+          user: {
+            select: {
+              email: true,
+              name: true,
             },
           },
         },
@@ -359,105 +289,6 @@ export class OrderController {
       } as ApiResponse);
     } catch (error) {
       next(error);
-    }
-  }
-
-  /**
-   * @swagger
-   * /orders/{id}/cancel:
-   *   post:
-   *     summary: Cancel an order
-   *     tags: [Orders]
-   *     security:
-   *       - bearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: id
-   *         required: true
-   *         schema:
-   *           type: string
-   *     responses:
-   *       200:
-   *         description: Order cancelled successfully
-   *       400:
-   *         description: Order cannot be cancelled
-   */
-  public async cancelOrder(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const { id } = req.params;
-      const userId = req.user!.userId;
-
-      const order = await prisma.order.findFirst({
-        where: {
-          id,
-          userId,
-        },
-      });
-
-      if (!order) {
-        res.status(404).json({
-          success: false,
-          message: 'Order not found',
-        } as ApiResponse);
-        return;
-      }
-
-      // Check if order can be cancelled
-      if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
-        res.status(400).json({
-          success: false,
-          message: 'Order cannot be cancelled at this stage',
-        } as ApiResponse);
-        return;
-      }
-
-      // Cancel payment intent if exists
-      if (order.paymentIntentId) {
-        try {
-          await paymentService.refundPayment(order.paymentIntentId);
-        } catch (error) {
-          logger.error('Failed to refund payment:', error);
-        }
-      }
-
-      // Update order status
-      const updatedOrder = await prisma.order.update({
-        where: { id },
-        data: { status: 'CANCELLED' },
-      });
-
-      // Restore product stock
-      await this.restoreProductStock(order.id);
-
-      logger.info(`Order cancelled: ${order.orderNumber} by user ${userId}`);
-
-      res.status(200).json({
-        success: true,
-        message: 'Order cancelled successfully',
-        data: { order: updatedOrder },
-      } as ApiResponse);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  private async restoreProductStock(orderId: string): Promise<void> {
-    const orderItems = await prisma.orderItem.findMany({
-      where: { orderId },
-      include: { product: true },
-    });
-
-    for (const item of orderItems) {
-      if (!item.product.isDigital) {
-        await prisma.product.update({
-          where: { id: item.productId },
-          data: {
-            stockQuantity: {
-              increment: item.quantity,
-            },
-          },
-        });
-      }
     }
   }
 }

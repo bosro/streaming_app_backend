@@ -1,9 +1,8 @@
-import { Request, Response, NextFunction } from 'express';
+import {  Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { PrismaClient, ContentCategory, ContentType } from '@prisma/client';
 import { ContentService } from '../services/contentService';
 import { StorageService } from '../services/storageService';
-import { logger } from '../utils/logger';
 import { ApiResponse, AuthenticatedRequest } from '../types/common';
 
 const prisma = new PrismaClient();
@@ -516,13 +515,13 @@ export class ContentController {
       const { id } = req.params;
       const { progress, duration } = updateProgressSchema.parse({ contentId: id, ...req.body });
       const userId = req.user!.userId;
-
+  
       // Verify content exists
       const content = await prisma.content.findUnique({
         where: { id },
         select: { id: true, isPublished: true },
       });
-
+  
       if (!content || !content.isPublished) {
         res.status(404).json({
           success: false,
@@ -530,13 +529,16 @@ export class ContentController {
         } as ApiResponse);
         return;
       }
-
+  
+      // Convert undefined duration to null for Prisma
+      const prismaDuration = duration ?? null;
+  
       // Update or create progress record
       const contentView = await prisma.contentView.upsert({
         where: { userId_contentId: { userId, contentId: id } },
         update: {
           progress,
-          duration,
+          duration: prismaDuration, // Use converted duration
           completed: progress >= 90, // Consider 90%+ as completed
           updatedAt: new Date(),
         },
@@ -544,11 +546,11 @@ export class ContentController {
           userId,
           contentId: id,
           progress,
-          duration,
+          duration: prismaDuration, // Use converted duration
           completed: progress >= 90,
         },
       });
-
+  
       res.status(200).json({
         success: true,
         message: 'Progress updated successfully',

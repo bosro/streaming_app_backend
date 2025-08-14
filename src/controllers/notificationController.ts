@@ -1,11 +1,8 @@
-import { Request, Response, NextFunction } from 'express';
+import {  Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
 import { NotificationService } from '../services/notificationService';
-import { logger } from '../utils/logger';
 import { ApiResponse, AuthenticatedRequest } from '../types/common';
 
-const prisma = new PrismaClient();
 const notificationService = new NotificationService();
 
 const sendNotificationSchema = z.object({

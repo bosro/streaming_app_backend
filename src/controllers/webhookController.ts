@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import Stripe from 'stripe';
 import { PaymentService } from '../services/paymentService';
 import { logger } from '../utils/logger';
 

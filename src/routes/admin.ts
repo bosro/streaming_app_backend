@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { body, param, query } from 'express-validator';
+import { body,  query } from 'express-validator';
 import { adminController } from '../controllers/adminController';
 import { authenticate, requireRole } from '../middleware/auth';
 import { validate, validatePagination } from '../middleware/validation';

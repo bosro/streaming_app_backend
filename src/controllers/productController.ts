@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
-import { logger } from '../utils/logger';
-import { ApiResponse, AuthenticatedRequest } from '../types/common';
+import { ApiResponse } from '../types/common';
 
 const prisma = new PrismaClient();
 

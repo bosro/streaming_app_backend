@@ -22,6 +22,8 @@ const createContentSchema = z.object({
   isPremium: z.boolean().default(false),
   isAdultContent: z.boolean().default(false),
   tags: z.array(z.string()).default([]),
+  fileSize: z.number().nonnegative().optional().nullable(), // Add fileSize as optional and nullable
+  metadata: z.any().optional().nullable().transform(val => val ?? null), // Add metadata as optional JSON
 });
 
 const createProductSchema = z.object({
@@ -33,9 +35,16 @@ const createProductSchema = z.object({
   images: z.array(z.string().url()).default([]),
   stockQuantity: z.number().min(0).default(0),
   isDigital: z.boolean().default(false),
-  weight: z.number().optional(),
-  dimensions: z.record(z.number()).optional(),
-  customizationOptions: z.any().optional(),
+  weight: z.number().nullable(),
+  dimensions: z
+    .object({
+      length: z.number().optional(),
+      width: z.number().optional(),
+      height: z.number().optional(),
+    })
+    .nullable()
+    .transform(val => (val === null ? null : JSON.parse(JSON.stringify(val)))), // Ensure JSON-compatible output
+  customizationOptions: z.any().nullable().transform(val => val ?? null),
 });
 
 export class AdminController {
@@ -205,11 +214,16 @@ export class AdminController {
       const content = await prisma.content.create({
         data: {
           ...validatedData,
-          metadata: {},
+          description: validatedData.description ?? null,
+          fileUrl: validatedData.fileUrl ?? null,
+          hlsUrl: validatedData.hlsUrl ?? null,
+          thumbnailUrl: validatedData.thumbnailUrl ?? null,
+          duration: validatedData.duration ?? null,
+          fileSize: validatedData.fileSize ?? null, // Add if in schema
+          metadata: validatedData.metadata ?? null, // Add if in schema, or keep as {}
         },
       });
 
-      // Send notification to users about new content
       if (validatedData.isPremium) {
         await notificationService.sendNotification({
           title: 'New Premium Content Available!',
@@ -278,16 +292,18 @@ export class AdminController {
   public async createProduct(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const validatedData = createProductSchema.parse(req.body);
-
+  
       const product = await prisma.product.create({
         data: {
           ...validatedData,
+          weight: validatedData.weight ?? null, // Still needed, as weight is not transformed in Zod
           inStock: validatedData.stockQuantity > 0 || validatedData.isDigital,
+          dimensions: validatedData.dimensions === null ? null : validatedData.dimensions, // Ensure dimensions is JSON-compatible
         },
       });
-
+  
       logger.info(`Product created by admin: ${product.id} - ${product.name}`);
-
+  
       res.status(201).json({
         success: true,
         message: 'Product created successfully',

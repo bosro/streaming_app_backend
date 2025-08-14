@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
 import { authController } from '../controllers/authController';
-import { authenticate, requireEmailVerification } from '../middleware/auth';
+import { authenticate, requireEmailVerification } from '../middleware/auth'; // Keep requireEmailVerification
 import { authRateLimiter, passwordResetRateLimiter } from '../middleware/rateLimiter';
 import { validate } from '../middleware/validation';
 
@@ -216,7 +216,7 @@ router.post('/verify-email', authController.verifyEmail);
  *       401:
  *         description: Unauthorized
  */
-router.get('/me', authenticate, authController.getProfile);
+router.get('/me', authenticate, requireEmailVerification, authController.getProfile);
 
 /**
  * @swagger

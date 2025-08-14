@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { PrismaClient, MessageType } from '@prisma/client';
 import { EmailService } from '../services/emailService';

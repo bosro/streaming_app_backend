@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { body, param } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import { orderController } from '../controllers/orderController';
 import { authenticate } from '../middleware/auth';
-import { validate } from '../middleware/validation';
+import { validate, validatePagination } from '../middleware/validation';
 
 const router = Router();
 
@@ -51,11 +51,16 @@ const router = Router();
  *       400:
  *         description: Invalid order data
  */
-router.post('/', authenticate, validate([
-  body('items').isArray({ min: 1 }).withMessage('At least one item is required'),
-  body('items.*.productId').isString().notEmpty().withMessage('Product ID is required'),
-  body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-]), orderController.createOrder);
+router.post(
+  '/',
+  authenticate,
+  validate([
+    body('items').isArray({ min: 1 }).withMessage('At least one item is required'),
+    body('items.*.productId').isString().notEmpty().withMessage('Product ID is required'),
+    body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
+  ]),
+  orderController.createOrder,
+);
 
 /**
  * @swagger
@@ -83,7 +88,19 @@ router.post('/', authenticate, validate([
  *       200:
  *         description: Orders retrieved successfully
  */
-router.get('/', authenticate, orderController.getUserOrders);
+router.get(
+  '/',
+  authenticate,
+  validatePagination,
+  validate([
+    query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
+    query('limit')
+      .optional()
+      .isInt({ min: 1, max: 50 })
+      .withMessage('Limit must be between 1 and 50'),
+  ]),
+  orderController.getUserOrders,
+);
 
 /**
  * @swagger
@@ -105,8 +122,11 @@ router.get('/', authenticate, orderController.getUserOrders);
  *       404:
  *         description: Order not found
  */
-router.get('/:id', authenticate, validate([
-  param('id').isString().notEmpty().withMessage('Order ID is required'),
-]), orderController.getOrderById);
+router.get(
+  '/:id',
+  authenticate,
+  validate([param('id').isString().notEmpty().withMessage('Order ID is required')]),
+  orderController.getOrderById,
+);
 
 export default router;
