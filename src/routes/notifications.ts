@@ -1,8 +1,7 @@
 import { Router } from 'express';
-import { body, param } from 'express-validator';
 import { notificationController } from '../controllers/notificationController';
 import { authenticate, requireRole } from '../middleware/auth';
-import { validate, validatePagination } from '../middleware/validation';
+import { validatePagination } from '../middleware/validation';
 
 const router = Router();
 
@@ -39,7 +38,7 @@ const router = Router();
  *       200:
  *         description: Notifications retrieved successfully
  */
-router.get('/', authenticate, validatePagination, notificationController.getNotifications);
+router.get('/', authenticate, validatePagination, notificationController.getNotifications.bind(notificationController));
 
 /**
  * @swagger
@@ -59,9 +58,7 @@ router.get('/', authenticate, validatePagination, notificationController.getNoti
  *       200:
  *         description: Notification marked as read
  */
-router.put('/:id/read', authenticate, validate([
-  param('id').isString().notEmpty().withMessage('Notification ID is required'),
-]), notificationController.markAsRead);
+router.put('/:id/read', authenticate, notificationController.markAsRead.bind(notificationController));
 
 /**
  * @swagger
@@ -90,10 +87,7 @@ router.put('/:id/read', authenticate, validate([
  *       200:
  *         description: Token registered successfully
  */
-router.post('/register-token', authenticate, validate([
-  body('token').isString().notEmpty().withMessage('Token is required'),
-  body('platform').isIn(['ios', 'android', 'web']).withMessage('Invalid platform'),
-]), notificationController.registerToken);
+router.post('/register-token', authenticate, notificationController.registerToken.bind(notificationController));
 
 /**
  * @swagger
@@ -129,12 +123,6 @@ router.post('/register-token', authenticate, validate([
  *       200:
  *         description: Notification sent successfully
  */
-router.post('/send', authenticate, requireRole(['ADMIN', 'SUPER_ADMIN']), validate([
-  body('title').isString().isLength({ min: 1, max: 100 }).withMessage('Title must be 1-100 characters'),
-  body('body').isString().isLength({ min: 1, max: 500 }).withMessage('Body must be 1-500 characters'),
-  body('data').optional().isObject(),
-  body('imageUrl').optional().isURL(),
-  body('targetUsers').optional().isArray(),
-]), notificationController.sendNotification);
+router.post('/send', authenticate, requireRole(['ADMIN', 'SUPER_ADMIN']), notificationController.sendNotification.bind(notificationController));
 
 export default router;

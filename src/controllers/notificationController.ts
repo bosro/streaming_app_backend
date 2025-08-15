@@ -1,15 +1,13 @@
-import {  Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { NotificationService } from '../services/notificationService';
+import { getNotificationService } from '../services/notificationService';
 import { ApiResponse, AuthenticatedRequest } from '../types/common';
-
-const notificationService = new NotificationService();
 
 const sendNotificationSchema = z.object({
   title: z.string().min(1).max(100),
   body: z.string().min(1).max(500),
   data: z.record(z.string()).optional(),
-  imageUrl: z.string().url().optional(),
+  imageUrl: z.string().url().nullable().optional(),
   targetUsers: z.array(z.string()).optional(),
 });
 
@@ -19,6 +17,8 @@ const registerTokenSchema = z.object({
 });
 
 export class NotificationController {
+  private notificationService = getNotificationService(); // Instantiate after Firebase initialization
+
   /**
    * @swagger
    * /notifications:
@@ -51,7 +51,7 @@ export class NotificationController {
       const limit = parseInt(req.query.limit as string) || 20;
       const userId = req.user!.userId;
 
-      const result = await notificationService.getNotificationsForUser(userId, page, limit);
+      const result = await this.notificationService.getNotificationsForUser(userId, page, limit);
 
       res.status(200).json({
         success: true,
@@ -86,7 +86,7 @@ export class NotificationController {
       const { id } = req.params;
       const userId = req.user!.userId;
 
-      await notificationService.markNotificationAsRead(userId, id);
+      await this.notificationService.markNotificationAsRead(userId, id);
 
       res.status(200).json({
         success: true,
@@ -129,7 +129,7 @@ export class NotificationController {
       const { token, platform } = registerTokenSchema.parse(req.body);
       const userId = req.user!.userId;
 
-      await notificationService.registerToken(userId, token, platform);
+      await this.notificationService.registerToken(userId, token, platform);
 
       res.status(200).json({
         success: true,
@@ -178,7 +178,7 @@ export class NotificationController {
     try {
       const validatedData = sendNotificationSchema.parse(req.body);
 
-      await notificationService.sendNotification(validatedData);
+      await this.notificationService.sendNotification(validatedData);
 
       res.status(200).json({
         success: true,

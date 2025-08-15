@@ -1,17 +1,33 @@
-import { Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
-import { ApiResponse } from '../types/common';
+import { Request, Response, NextFunction } from "express";
+import { z } from "zod";
+import { PrismaClient } from "@prisma/client";
+import { ApiResponse } from "../types/common";
 
 const prisma = new PrismaClient();
 
 const getProductsSchema = z.object({
   category: z.string().optional(),
-  page: z.string().transform(Number).pipe(z.number().min(1)).optional().default('1'),
-  limit: z.string().transform(Number).pipe(z.number().min(1).max(50)).optional().default('20'),
+  page: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().min(1))
+    .optional()
+    .default("1"),
+  limit: z
+    .string()
+    .transform(Number)
+    .pipe(z.number().min(1).max(50))
+    .optional()
+    .default("20"),
   search: z.string().optional(),
-  inStock: z.string().transform(val => val === 'true').optional(),
-  isDigital: z.string().transform(val => val === 'true').optional(),
+  inStock: z
+    .string()
+    .transform((val) => val === "true")
+    .optional(),
+  isDigital: z
+    .string()
+    .transform((val) => val === "true")
+    .optional(),
 });
 
 export class ProductController {
@@ -55,9 +71,14 @@ export class ProductController {
    *       200:
    *         description: Products retrieved successfully
    */
-  public async getProducts(req: Request, res: Response, next: NextFunction): Promise<void> {
+  public async getProducts(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
-      const { category, page, limit, search, inStock, isDigital } = getProductsSchema.parse(req.query);
+      const { category, page, limit, search, inStock, isDigital } =
+        getProductsSchema.parse(req.query);
       const offset = (page - 1) * limit;
 
       // Build where clause
@@ -68,11 +89,11 @@ export class ProductController {
       if (category) where.category = category;
       if (inStock !== undefined) where.inStock = inStock;
       if (isDigital !== undefined) where.isDigital = isDigital;
-      
+
       if (search) {
         where.OR = [
-          { name: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } },
+          { name: { contains: search, mode: "insensitive" } },
+          { description: { contains: search, mode: "insensitive" } },
         ];
       }
 
@@ -81,7 +102,7 @@ export class ProductController {
           where,
           skip: offset,
           take: limit,
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
           select: {
             id: true,
             name: true,
@@ -101,7 +122,7 @@ export class ProductController {
 
       res.status(200).json({
         success: true,
-        message: 'Products retrieved successfully',
+        message: "Products retrieved successfully",
         data: {
           products,
           pagination: {
@@ -137,7 +158,11 @@ export class ProductController {
    *       404:
    *         description: Product not found
    */
-  public async getProductById(req: Request, res: Response, next: NextFunction): Promise<void> {
+  public async getProductById(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const { id } = req.params;
 
@@ -148,14 +173,14 @@ export class ProductController {
       if (!product) {
         res.status(404).json({
           success: false,
-          message: 'Product not found',
+          message: "Product not found",
         } as ApiResponse);
         return;
       }
 
       res.status(200).json({
         success: true,
-        message: 'Product details retrieved successfully',
+        message: "Product details retrieved successfully",
         data: { product },
       } as ApiResponse);
     } catch (error) {
@@ -173,23 +198,37 @@ export class ProductController {
    *       200:
    *         description: Categories retrieved successfully
    */
-  public async getCategories(req: Request, res: Response, next: NextFunction): Promise<void> {
+  /**
+   * @swagger
+   * /products/categories:
+   *   get:
+   *     summary: Get product categories
+   *     tags: [Products]
+   *     responses:
+   *       200:
+   *         description: Categories retrieved successfully
+   */
+  public async getCategories(
+    _req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const categories = await prisma.product.groupBy({
-        by: ['category'],
+        by: ["category"],
         where: { isActive: true },
         _count: { category: true },
-        orderBy: { category: 'asc' },
+        orderBy: { category: "asc" },
       });
 
-      const formattedCategories = categories.map(cat => ({
+      const formattedCategories = categories.map((cat) => ({
         name: cat.category,
         count: cat._count.category,
       }));
 
       res.status(200).json({
         success: true,
-        message: 'Categories retrieved successfully',
+        message: "Categories retrieved successfully",
         data: { categories: formattedCategories },
       } as ApiResponse);
     } catch (error) {
