@@ -8,8 +8,8 @@ interface SendNotificationParams {
   title: string;
   body: string;
   data?: Record<string, string> | undefined;
-  imageUrl?: string | null | undefined; // Updated to match Zod schema and Prisma
-  targetUsers?: string[] | undefined; // user IDs, or empty for all users
+  imageUrl?: string | null | undefined;
+  targetUsers?: string[] | undefined;
 }
 
 interface SendToUserParams {
@@ -17,15 +17,15 @@ interface SendToUserParams {
   title: string;
   body: string;
   data?: Record<string, string> | undefined;
-  imageUrl?: string | null | undefined; // Updated to match Prisma
+  imageUrl?: string | null | undefined;
 }
 
 export class NotificationService {
   private messaging: admin.messaging.Messaging;
 
-  constructor() {
+  constructor(firebaseAdmin: typeof admin) {
     logger.info('Instantiating NotificationService');
-    this.messaging = admin.messaging();
+    this.messaging = firebaseAdmin.messaging();
   }
 
   public async sendNotification(params: SendNotificationParams): Promise<void> {
@@ -36,7 +36,7 @@ export class NotificationService {
           title,
           body,
           data: data ?? {},
-          imageUrl: imageUrl ?? null, // Handles null or undefined
+          imageUrl: imageUrl ?? null,
           targetUsers: targetUsers ?? ['all'],
           type: 'GENERAL',
         },
@@ -80,9 +80,9 @@ export class NotificationService {
       for (let i = 0; i < messages.length; i += batchSize) {
         const batch = messages.slice(i, i + batchSize);
         try {
-          const response = await this.messaging.sendAll(batch);
+          const response = await this.messaging.sendEach(batch);
           sentCount += response.successCount;
-          response.responses.forEach((resp, index) => {
+          response.responses.forEach((resp: admin.messaging.SendResponse, index: number) => {
             if (!resp.success) {
               const token = batch[index].token;
               logger.error(`Failed to send notification to token ${token}:`, resp.error);
@@ -139,8 +139,8 @@ export class NotificationService {
     };
 
     try {
-      const response = await this.messaging.sendMulticast(message);
-      response.responses.forEach((resp, index) => {
+      const response = await this.messaging.sendEachForMulticast(message);
+      response.responses.forEach((resp: admin.messaging.SendResponse, index: number) => {
         if (!resp.success && resp.error?.code === 'messaging/registration-token-not-registered') {
           this.deactivateToken(tokens[index]);
         }
@@ -205,4 +205,9 @@ export class NotificationService {
   }
 }
 
-export const getNotificationService = () => new NotificationService();
+export const getNotificationService = async () => {
+  if (admin.apps.length === 0) {
+    throw new Error('Firebase Admin SDK not initialized. Call initializeFirebase first.');
+  }
+  return new NotificationService(admin);
+};

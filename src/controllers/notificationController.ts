@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { getNotificationService } from '../services/notificationService';
 import { ApiResponse, AuthenticatedRequest } from '../types/common';
+import { NotificationService } from '../services/notificationService';
 
 const sendNotificationSchema = z.object({
   title: z.string().min(1).max(100),
@@ -17,7 +18,16 @@ const registerTokenSchema = z.object({
 });
 
 export class NotificationController {
-  private notificationService = getNotificationService(); // Instantiate after Firebase initialization
+  private notificationService: NotificationService;
+
+  constructor(notificationService: NotificationService) {
+    this.notificationService = notificationService;
+  }
+
+  public static async create(): Promise<NotificationController> {
+    const notificationService = await getNotificationService();
+    return new NotificationController(notificationService);
+  }
 
   /**
    * @swagger
@@ -189,5 +199,3 @@ export class NotificationController {
     }
   }
 }
-
-export const notificationController = new NotificationController();

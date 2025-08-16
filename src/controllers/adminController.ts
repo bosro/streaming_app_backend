@@ -1,14 +1,13 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import { StorageService } from '../services/storageService';
-import { NotificationService } from '../services/notificationService';
+import { NotificationService, getNotificationService } from '../services/notificationService';
 import { logger } from '../utils/logger';
 import { ApiResponse, AuthenticatedRequest } from '../types/common';
 
 const prisma = new PrismaClient();
 const storageService = new StorageService();
-const notificationService = new NotificationService();
 
 const createContentSchema = z.object({
   title: z.string().min(1).max(200),
@@ -22,8 +21,8 @@ const createContentSchema = z.object({
   isPremium: z.boolean().default(false),
   isAdultContent: z.boolean().default(false),
   tags: z.array(z.string()).default([]),
-  fileSize: z.number().nonnegative().optional().nullable(), // Add fileSize as optional and nullable
-  metadata: z.any().optional().nullable().transform(val => val ?? null), // Add metadata as optional JSON
+  fileSize: z.number().nonnegative().optional().nullable(),
+  metadata: z.any().optional().nullable().transform(val => val ?? null),
 });
 
 const createProductSchema = z.object({
@@ -43,11 +42,24 @@ const createProductSchema = z.object({
       height: z.number().optional(),
     })
     .nullable()
-    .transform(val => (val === null ? null : JSON.parse(JSON.stringify(val)))), // Ensure JSON-compatible output
+    .transform(val => (val === null ? null : JSON.parse(JSON.stringify(val)))),
   customizationOptions: z.any().nullable().transform(val => val ?? null),
 });
 
 export class AdminController {
+  private notificationService: NotificationService;
+  private storageService: StorageService;
+
+  constructor(notificationService: NotificationService, storageService: StorageService) {
+    this.notificationService = notificationService;
+    this.storageService = storageService;
+  }
+
+  public static async create(): Promise<AdminController> {
+    const notificationService = await getNotificationService();
+    return new AdminController(notificationService, storageService);
+  }
+
   /**
    * @swagger
    * /admin/analytics:
@@ -66,7 +78,6 @@ export class AdminController {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-      // User analytics
       const [
         totalUsers,
         newUsersThisMonth,
@@ -100,7 +111,6 @@ export class AdminController {
         prisma.download.count(),
       ]);
 
-      // Content analytics
       const topContent = await prisma.content.findMany({
         where: { isPublished: true },
         orderBy: { viewCount: 'desc' },
@@ -114,7 +124,6 @@ export class AdminController {
         },
       });
 
-      // Subscription tier distribution
       const subscriptionTiers = await prisma.user.groupBy({
         by: ['subscriptionTier'],
         _count: { subscriptionTier: true },
@@ -219,13 +228,13 @@ export class AdminController {
           hlsUrl: validatedData.hlsUrl ?? null,
           thumbnailUrl: validatedData.thumbnailUrl ?? null,
           duration: validatedData.duration ?? null,
-          fileSize: validatedData.fileSize ?? null, // Add if in schema
-          metadata: validatedData.metadata ?? null, // Add if in schema, or keep as {}
+          fileSize: validatedData.fileSize ?? null,
+          metadata: validatedData.metadata ?? null,
         },
       });
 
       if (validatedData.isPremium) {
-        await notificationService.sendNotification({
+        await this.notificationService.sendNotification({
           title: 'New Premium Content Available!',
           body: `Check out our latest ${validatedData.category.toLowerCase()}: ${validatedData.title}`,
           data: {
@@ -292,18 +301,18 @@ export class AdminController {
   public async createProduct(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const validatedData = createProductSchema.parse(req.body);
-  
+
       const product = await prisma.product.create({
         data: {
           ...validatedData,
-          weight: validatedData.weight ?? null, // Still needed, as weight is not transformed in Zod
+          weight: validatedData.weight ?? null,
           inStock: validatedData.stockQuantity > 0 || validatedData.isDigital,
-          dimensions: validatedData.dimensions === null ? null : validatedData.dimensions, // Ensure dimensions is JSON-compatible
+          dimensions: validatedData.dimensions === null ? null : validatedData.dimensions,
         },
       });
-  
+
       logger.info(`Product created by admin: ${product.id} - ${product.name}`);
-  
+
       res.status(201).json({
         success: true,
         message: 'Product created successfully',
@@ -354,7 +363,7 @@ export class AdminController {
         return;
       }
 
-      const { uploadUrl, fileKey } = await storageService.generateUploadUrl(
+      const { uploadUrl, fileKey } = await this.storageService.generateUploadUrl(
         fileName,
         contentType,
         folder
@@ -366,7 +375,7 @@ export class AdminController {
         data: {
           uploadUrl,
           fileKey,
-          publicUrl: storageService.getPublicUrl(fileKey),
+          publicUrl: this.storageService.getPublicUrl(fileKey),
         },
       } as ApiResponse);
     } catch (error) {
@@ -464,5 +473,3 @@ export class AdminController {
     }
   }
 }
-
-export const adminController = new AdminController();

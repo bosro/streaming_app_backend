@@ -21,12 +21,16 @@ import webhookRoutes from './routes/webhooks';
 import { connectDatabase } from './config/database';
 import { initializeFirebase } from './config/firebase';
 import { logger } from './utils/logger';
+import { NotificationController } from './controllers/notificationController';
+import { AdminController } from './controllers/adminController';
 
 dotenv.config();
 
 class App {
   public app: Application;
   public port: number;
+  private notificationController?: NotificationController;
+  private adminController?: AdminController;
 
   constructor() {
     this.app = express();
@@ -96,9 +100,19 @@ class App {
     this.app.use(`/api/${apiVersion}/subscriptions`, subscriptionRoutes);
     this.app.use(`/api/${apiVersion}/products`, productRoutes);
     this.app.use(`/api/${apiVersion}/orders`, orderRoutes);
-    this.app.use(`/api/${apiVersion}/notifications`, notificationRoutes);
+    this.app.use(`/api/${apiVersion}/notifications`, async (req, res, next) => {
+      if (!this.notificationController) {
+        return res.status(503).json({ success: false, message: 'Notification service not initialized' });
+      }
+      return notificationRoutes(this.notificationController)(req, res, next);
+    });
+    this.app.use(`/api/${apiVersion}/admin`, async (req, res, next) => {
+      if (!this.adminController) {
+        return res.status(503).json({ success: false, message: 'Admin service not initialized' });
+      }
+      return adminRoutes(this.adminController)(req, res, next);
+    });
     this.app.use(`/api/${apiVersion}/messages`, messageRoutes);
-    this.app.use(`/api/${apiVersion}/admin`, adminRoutes);
     this.app.use(`/api/${apiVersion}/webhooks`, webhookRoutes);
 
     this.app.use('*', (req: Request, res: Response) => {
@@ -151,6 +165,11 @@ class App {
       logger.info('Database connected successfully');
       await initializeFirebase();
       logger.info('Firebase initialized successfully');
+      this.notificationController = await NotificationController.create();
+      logger.info('NotificationController initialized successfully');
+      this.adminController = await AdminController.create();
+      logger.info('AdminController initialized successfully');
+
       this.app.listen(this.port, () => {
         logger.info(`🚀 Server running on port ${this.port}`);
         logger.info(`📚 API Documentation available at http://localhost:${this.port}/api-docs`);
